@@ -15,7 +15,7 @@ Supported
 
 ST2/ ST3
 
-* windows未検証 *
+**windows未検証**
 
 
 License

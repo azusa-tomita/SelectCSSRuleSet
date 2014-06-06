@@ -3,34 +3,36 @@ import sublime_plugin
 
 class select_css_rule_set(sublime_plugin.TextCommand):
 	def run(self, edit):
-		
+
 		view = self.view
 		sel = view.sel()[0]
 
-		def find(key):
-			res = view.find(key,sel.begin())
-			if res:
-				return res
-			else:
-				return sublime.Region(-1,-1)
-
-		def rfind(key):
+		def find(key,dir="f"):
 			val = ""
 			i = 0
-			while val != key and sel.begin() - i != 0:
-				i += 1
-				val = view.substr( sel.begin() - i )
+			if (dir == "f"):
+				target = view.size()
 			else:
-				return sublime.Region(sel.begin() - i,sel.begin() - i)
+				target = 0
+			while val != key and target - (sel.begin() + i) != 0:
+				if (dir == "f"):
+					i += 1
+				else:
+					i -= 1
+				val = view.substr( sel.begin() + i )
+			else:
+				if val == key:
+					return sublime.Region(sel.begin() + i,sel.begin() + i)
+				else:
+					return sublime.Region(-1,-1)
 
-		nearestOpCurly = find('\{').end()
-		nearestClCurly = find('\}').end()
+
+		nearestOpCurly = find('{').end()
+		nearestClCurly = find('}').end()
 		if view.substr( sel.begin() - 1 ) == ";" and view.substr( sel.begin()) == "\n":
-			nearestSColon  = rfind(';').end()
+			nearestSColon  = find(';',"r").end()
 		else:
 			nearestSColon  = find(';').end()
-
-		currentStr = find('\}').end()
 
 
 		isSelector = False
@@ -59,9 +61,9 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 			view.sel().clear()
 			view.sel().add(nearestOpCurly)
 
-		if view.substr( sel.begin() ) == "(" or view.substr( sel.begin() - 1 ) == ")" or rfind("(") > rfind(")"):
+		if view.substr( sel.begin() ) == "(" or view.substr( sel.begin() - 1 ) == ")" or find("(","r") > find(")","r"):
 			view.sel().clear()
-			view.sel().add(rfind(":"))
+			view.sel().add(find(":","r"))
 
 		if view.substr( sel.begin() - 1 ) == "}" and view.substr( sel.begin()) == "\n":
 			view.sel().clear()
@@ -69,29 +71,26 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 
 		if nearestOpCurly < 0 and nearestClCurly < 0:
 			view.sel().clear()
-			view.sel().add(rfind("}"))
+			view.sel().add(find("}","r"))
+
 
 
 		view.run_command('expand_selection', {'to': 'brackets'})
 		view.run_command('expand_selection', {'to': 'brackets'})
 		cssBlock = view.sel()[0]
-		cssBlockOp = cssBlock.begin()
-		ruleSetCl = cssBlock.end()
-
 
 		str = ""
-		ruleSetOp = ""
 		i = 0
-		while str != ";" and str != "{" and str != "}" and cssBlockOp - i > -1:
+		while str != ";" and str != "{" and str != "}" and cssBlock.begin() - i > -1:
 			i += 1
-			str = view.substr( cssBlockOp - i )
+			str = view.substr( cssBlock.begin() - i )
 		else:
 			i -= 1
-			while view.substr(cssBlockOp - i) == "\n":
+			while view.substr(cssBlock.begin() - i) == "\n":
 				i -= 1
 			else:
-				ruleSetOp = cssBlockOp - i
+				ruleSetOp = cssBlock.begin() - i
 
 		view.sel().clear()
-		view.sel().add(sublime.Region(ruleSetOp,ruleSetCl))
+		view.sel().add( sublime.Region(ruleSetOp,cssBlock.end()) )
 

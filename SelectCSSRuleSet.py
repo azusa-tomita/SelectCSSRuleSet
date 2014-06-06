@@ -7,7 +7,6 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 		view = self.view
 		sel = view.sel()[0]
 
-
 		def find(key):
 			res = view.find(key,sel.begin())
 			if res:
@@ -16,59 +15,83 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 				return sublime.Region(-1,-1)
 
 		def rfind(key):
-			str = ""
+			val = ""
 			i = 0
-			while str != key and i != view.size():
+			while val != key and sel.begin() - i != 0:
 				i += 1
-				str = view.substr( sel.begin() - i )
-				print(i)
+				val = view.substr( sel.begin() - i )
 			else:
 				return sublime.Region(sel.begin() - i,sel.begin() - i)
 
-		nCurlyS = find('\{').end()
-		nCurlyE = find('\}').end()
-		nColon  = find(':').end()
-		nSColon = find(';').end()
+		nearestOpCurly = find('\{').end()
+		nearestClCurly = find('\}').end()
+		if view.substr( sel.begin() - 1 ) == ";" and view.substr( sel.begin()) == "\n":
+			nearestSColon  = rfind(';').end()
+		else:
+			nearestSColon  = find(';').end()
+
+		currentStr = find('\}').end()
 
 
-		if nCurlyS < 0 and nCurlyE < 0:
-			bfCurlyE = rfind("}")
+		isSelector = False
+		if nearestOpCurly < 0:
+			if nearestClCurly < 0:
+				isSelector = True
+			else:
+				isSelector = False
+		else:
+			if nearestClCurly < 0:
+				isSelector = False
+			else:
+				if nearestClCurly < nearestOpCurly:
+					isSelector = False
+				else:
+					if nearestSColon < 0:
+						isSelector = True
+					else:
+						if nearestOpCurly < nearestSColon:
+							isSelector = True
+						else:
+							isSelector = False
+
+
+		if isSelector :
 			view.sel().clear()
-			view.sel().add(bfCurlyE)
+			view.sel().add(nearestOpCurly)
 
-		elif view.substr( sel.begin() - 1 ) == "}" and view.substr( sel.begin()) == "\n":
+		if view.substr( sel.begin() ) == "(" or view.substr( sel.begin() - 1 ) == ")" or rfind("(") > rfind(")"):
+			view.sel().clear()
+			view.sel().add(rfind(":"))
+
+		if view.substr( sel.begin() - 1 ) == "}" and view.substr( sel.begin()) == "\n":
 			view.sel().clear()
 			view.sel().add(sublime.Region(sel.begin()-1,sel.begin()-1))
 
-		elif (0 < nCurlyS and nCurlyS < nCurlyE) and ( ( nCurlyS < nColon and nCurlyS < nSColon ) or ( nColon < 0 and nSColon < 0 ) ):
-				view.sel().clear()
-				view.sel().add(sublime.Region(nCurlyS,nCurlyS))
-		else:
-			bfParenthesisS = rfind("(")
-			bfColon = rfind(":")
-			if bfColon < bfParenthesisS:
-				view.sel().clear()
-				view.sel().add(bfColon)
+		if nearestOpCurly < 0 and nearestClCurly < 0:
+			view.sel().clear()
+			view.sel().add(rfind("}"))
+
 
 		view.run_command('expand_selection', {'to': 'brackets'})
 		view.run_command('expand_selection', {'to': 'brackets'})
 		cssBlock = view.sel()[0]
-		cssBlockS = cssBlock.begin()
-		ruleSetE = cssBlock.end()
+		cssBlockOp = cssBlock.begin()
+		ruleSetCl = cssBlock.end()
+
 
 		str = ""
-		ruleSetS = ""
+		ruleSetOp = ""
 		i = 0
-		while str != ";" and str != "{" and str != "}" and cssBlockS - i > -1:
+		while str != ";" and str != "{" and str != "}" and cssBlockOp - i > -1:
 			i += 1
-			str = view.substr( cssBlockS - i )
+			str = view.substr( cssBlockOp - i )
 		else:
 			i -= 1
-			while view.substr(cssBlockS - i) == "\n":
+			while view.substr(cssBlockOp - i) == "\n":
 				i -= 1
 			else:
-				ruleSetS = cssBlockS - i
+				ruleSetOp = cssBlockOp - i
 
 		view.sel().clear()
-		view.sel().add(sublime.Region(ruleSetS,ruleSetE))
+		view.sel().add(sublime.Region(ruleSetOp,ruleSetCl))
 

@@ -3,37 +3,111 @@ import sublime_plugin
 
 class select_css_rule_set(sublime_plugin.TextCommand):
 	def run(self, edit):
-
 		view = self.view
+
+		def findStr(key, point = view.sel()[0].begin(),dir="f"):
+			keyLength = len(key)
+			res = val = lineVal = ""
+			isCSSComment = isSassComment = False
+			i = j = sass = cssOp = cssCl =  0
+			beforeLine = view.split_by_newlines ( sublime.Region(0,point) )
+			currentLine = len(beforeLine) - 1
+
+			if view.substr( beforeLine[currentLine] ).find("//") >= 0:
+				isSassComment = True
+				sass = view.substr( beforeLine[currentLine] ).find("//")
+
+			j = currentLine
+			while j >= 0:
+				val = view.substr( beforeLine[j] )
+				if cssOp and cssCl:
+					break
+				else:
+					if cssOp == 0 and val.rfind("/*") != -1:
+						cssOp = beforeLine[j].begin() + val.rfind("/*")
+					if cssCl == 0 and val.rfind("*/") != -1:
+						cssCl = beforeLine[j].begin() + val.rfind("*/") + 1
+					j = j - 1
+
+			if cssCl < cssOp:
+				isCSSComment = True
+
+			if dir == "f":
+				while view.size() - (point + i) != 0:
+					val = view.substr( sublime.Region( point + i,point + i + keyLength) )
+
+					if val[0] == "/":
+						if view.substr(point + i + 1) == "*":
+							isCSSComment = True
+						if view.substr(point + i - 1) == "*":
+							isCSSComment = False
+
+					if val[0] == "/":
+						if view.substr(point + i + 1) == "/":
+							isSassComment = True
+
+					if val[0] == "\n":
+						if isSassComment == True:
+							isSassComment = False
+
+					if isCSSComment == False and isSassComment == False:
+						if key == val:
+							res = sublime.Region( point + i,point + i + keyLength)
+							break
+					i = i + 1
+				else:
+					res = sublime.Region( -1,-1)
+
+			else:
+				j = currentLine
+				while j >= 0:
+					lineValS = beforeLine[j].begin()
+					lineValE = beforeLine[j].end()-1
+					lineVal = view.substr( beforeLine[j] )
+
+					if j == currentLine:
+						lineVal = view.substr( sublime.Region(beforeLine[j].begin(),point) )
+
+						if isSassComment == True:
+							lineVal = view.substr( sublime.Region(lineValS,lineValS + sass) )
+					else:
+						sass = lineVal.find("//")
+						if sass != -1:
+							lineVal = view.substr( sublime.Region(lineValS,lineValS + sass) )
+
+					i = 0
+					while len(lineVal)-keyLength >= i:
+						valE = len(lineVal)-i
+						valS = valE - keyLength
+						val = lineVal[valS:valE]
+
+						sl = val.rfind("/")
+						if sl != -1:
+							if view.substr(lineValS + valS + sl -1) == "*":
+								isCSSComment = True
+							if view.substr(lineValS + valS + sl +1) == "*":
+								isCSSComment = False
+
+						if isCSSComment == False and isSassComment == False:
+							if key == val:
+								res = sublime.Region( lineValS + valS,lineValS + valE)
+								break
+
+						i = i + 1
+
+					if res !="":
+						break
+					j = j - 1
+				else:
+					res = sublime.Region( -1,-1)
+			return res
+
 		sel = view.sel()[0]
-
-		def find(key,dir="f"):
-			val = ""
-			i = 0
-			if (dir == "f"):
-				target = view.size()
-			else:
-				target = 0
-			while val != key and target - (sel.begin() + i) != 0:
-				if (dir == "f"):
-					i += 1
-				else:
-					i -= 1
-				val = view.substr( sel.begin() + i )
-			else:
-				if val == key:
-					return sublime.Region(sel.begin() + i,sel.begin() + i)
-				else:
-					return sublime.Region(-1,-1)
-
-
-		nearestOpCurly = find('{').end()
-		nearestClCurly = find('}').end()
+		nearestOpCurly = findStr('{',point = sel.begin()).end()
+		nearestClCurly = findStr('}',point = sel.begin()).end()
+		nearestSColon  = findStr(';',point = sel.begin()).end()
 		if view.substr( sel.begin() - 1 ) == ";" and view.substr( sel.begin()) == "\n":
-			nearestSColon  = find(';',"r").end()
-		else:
-			nearestSColon  = find(';').end()
-
+			nearestSColon  = findStr(';',point = sel.begin(),dir="r").end()
 
 		isSelector = False
 		if nearestOpCurly < 0:
@@ -56,40 +130,38 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 						else:
 							isSelector = False
 
-
 		if isSelector :
 			view.sel().clear()
 			view.sel().add(nearestOpCurly)
 
-		if view.substr( sel.begin() ) == "(" or view.substr( sel.begin() - 1 ) == ")" or find("(","r") > find(")","r"):
-			view.sel().clear()
-			view.sel().add(find(":","r"))
-
-		if view.substr( sel.begin() - 1 ) == "}" and view.substr( sel.begin()) == "\n":
+		if (view.substr( sel.begin() - 1 ) == "}" or view.substr( sel.begin() - 1 ) == "{") and view.substr( sel.begin()) == "\n":
 			view.sel().clear()
 			view.sel().add(sublime.Region(sel.begin()-1,sel.begin()-1))
 
+		if view.substr( sel.begin() ) == "(" or view.substr( sel.begin() - 1 ) == ")" or findStr("(",dir="r") > findStr(")",dir="r"):
+			view.sel().clear()
+			view.sel().add(max(findStr("{",dir="r").begin(),findStr("}",dir="r").begin()))
+
 		if nearestOpCurly < 0 and nearestClCurly < 0:
 			view.sel().clear()
-			view.sel().add(find("}","r"))
-
-
+			view.sel().add(findStr("}",dir="r"))
 
 		view.run_command('expand_selection', {'to': 'brackets'})
 		view.run_command('expand_selection', {'to': 'brackets'})
 		cssBlock = view.sel()[0]
 
-		str = ""
+
+		fNearestOpCurly = findStr('{',point = cssBlock.begin()-1,dir="r").end() 
+		fNearestClCurly = findStr('}',point = cssBlock.begin()-1,dir="r").end()
+		fNearestSColon  = findStr(';',point = cssBlock.begin()-1,dir="r").end()
+
+		ruleSetOp = max(fNearestOpCurly + 1, fNearestClCurly + 1, fNearestSColon + 1)
+
 		i = 0
-		while str != ";" and str != "{" and str != "}" and cssBlock.begin() - i > -1:
+		while view.substr(ruleSetOp + i) == "\n":
 			i += 1
-			str = view.substr( cssBlock.begin() - i )
 		else:
-			i -= 1
-			while view.substr(cssBlock.begin() - i) == "\n":
-				i -= 1
-			else:
-				ruleSetOp = cssBlock.begin() - i
+			ruleSetOp = ruleSetOp + i
 
 		view.sel().clear()
 		view.sel().add( sublime.Region(ruleSetOp,cssBlock.end()) )

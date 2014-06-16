@@ -13,7 +13,7 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 			beforeLine = view.split_by_newlines ( sublime.Region(0,point) )
 			currentLine = len(beforeLine) - 1
 
-			if view.substr( beforeLine[currentLine] ).find("//") >= 0:
+			if view.substr( beforeLine[currentLine] ).find("//") > 0:
 				isSassComment = True
 				sass = view.substr( beforeLine[currentLine] ).find("//")
 
@@ -103,11 +103,11 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 			return res
 
 		sel = view.sel()[0]
-		nearestOpCurly = findStr('{',point = sel.begin()).end()
-		nearestClCurly = findStr('}',point = sel.begin()).end()
-		nearestSColon  = findStr(';',point = sel.begin()).end()
+		nearestOpCurly = findStr('{',point = sel.begin()).begin()
+		nearestClCurly = findStr('}',point = sel.begin()).begin()
+		nearestSColon  = findStr(';',point = sel.begin()).begin()
 		if view.substr( sel.begin() - 1 ) == ";" and view.substr( sel.begin()) == "\n":
-			nearestSColon  = findStr(';',point = sel.begin(),dir="r").end()
+			nearestSColon  = findStr(';',point = sel.begin(),dir="r").begin()
 
 		isSelector = False
 		if nearestOpCurly < 0:
@@ -155,14 +155,30 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 		fNearestClCurly = findStr('}',point = cssBlock.begin()-1,dir="r").end()
 		fNearestSColon  = findStr(';',point = cssBlock.begin()-1,dir="r").end()
 
-		ruleSetOp = max(fNearestOpCurly + 1, fNearestClCurly + 1, fNearestSColon + 1)
+		ruleSetOp = max(fNearestOpCurly, fNearestClCurly, fNearestSColon)
 
-		i = 0
-		while view.substr(ruleSetOp + i) == "\n":
-			i += 1
-		else:
-			ruleSetOp = ruleSetOp + i
+		i = ruleSetOp
+		isCSSComment = isSassComment = False
+		while i < cssBlock.begin():
+			if isCSSComment == True or isSassComment == True:
+				if isCSSComment == True and view.substr(i) == "*" and view.substr(i + 1) == "/":
+					isCSSComment = False
+					i = i + 1
+				elif isSassComment == True and view.substr(i) == "\n":
+					isSassComment = False
+			elif view.substr(i) == "/" and view.substr(i + 1) == "*":
+				isCSSComment = True
+			elif view.substr(i) == "/" and view.substr(i + 1) == "/":
+				isSassComment = True
+			elif (view.substr(i) == "\n" or
+						view.substr(i) == "\t" or
+						view.substr(i) == " "
+					):
+				pass
+			else:
+				break
+			i = i + 1
+		ruleSetOp = i
 
 		view.sel().clear()
 		view.sel().add( sublime.Region(ruleSetOp,cssBlock.end()) )
-

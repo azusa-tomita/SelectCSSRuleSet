@@ -5,7 +5,7 @@ class select_css_rule_set(sublime_plugin.TextCommand):
   def run(self, edit):
     view = self.view
 
-    # find except the comment of CSS and SCSS
+    # CSS/SCSSのコメント内を対象外で検索
     def findStr(key, point = view.sel()[0].begin(), dir = "f"):
       keyLength = len(key)
       target = val = lineVal = ""
@@ -100,7 +100,10 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 
           if target != "":
             break
+
           j = j - 1
+          isCmtSCSS = False
+
         else:
           target = sublime.Region(-1, -1)
       return target
@@ -109,75 +112,82 @@ class select_css_rule_set(sublime_plugin.TextCommand):
     sel = view.sel()[0]
     selS = sel.begin()
 
-    # Adjustment of the cursor position for expand_selection
-    nearestLCurly = findStr('{', point = selS).begin()
-    nearestRCurly = findStr('}', point = selS).begin()
-    nearestSColon = findStr(';', point = selS).begin()
-    if view.substr(selS - 1) == ";" and view.substr(selS) == "\n":
-      nearestSColon  = findStr(';', point = selS, dir = "r").begin()
+    # インターポレーション内にカーソルがある場合、外側に移動
+    _f1 = findStr('{', point = selS, dir = "r")
+    _f2 = findStr('}', point = selS, dir = "r")
+    if view.substr(_f1.begin() - 1) == "#":
+      if _f1.begin() > _f2.begin():
+        view.sel().clear()
+        view.sel().add(_f1.begin() - 1)
+    selS = view.sel()[0].begin()
 
-    isSelector = False
-    if nearestLCurly < 0:
-      if nearestRCurly < 0:
-        isSelector = True
-      else:
-        isSelector = False
+
+    # セレクタ位置にある場合は{}の内側に、
+    # それ以外は;または}に移動
+    _f3 = findStr(';', point = selS)
+
+    _f4 = findStr('{', point = selS)
+    while view.substr(_f4.begin() - 1) == "#":
+      _f4 = findStr('{', point = _f4.begin() + 1)
+
+    _f5 = findStr('}', point = selS)
+    _tmp = findStr('{', point = selS)
+    if view.substr(_tmp.begin() - 1) == "#":
+      while _tmp.begin() < _f5.begin():
+        _tmp = findStr('{', point = _f5.begin() )
+        _f5 = findStr('}', point = _f5.begin() + 1 )
+
+    view.sel().clear()
+    pos = min(_f3.begin(),_f4.begin(),_f5.begin())
+    if pos == _f4.begin():
+      pos = pos + 1
+    view.sel().add(pos)
+
+
+    # 宣言ブロック選択
+    view.run_command('expand_selection', {'to': 'brackets'})
+    view.run_command('expand_selection', {'to': 'brackets'})
+
+    ## (....)|; など、括弧の直後にカーソルがある場合、expand_selectionが直前の括弧に奪われるため、
+    ## 選択範囲の始点が"{"でない場合はもう一度expand_selectionを実行
+    _tpl = view.sel()[0].begin()
+    if view.substr(_tpl) != "{":
+      view.run_command('expand_selection', {'to': 'brackets'})
     else:
-      if nearestRCurly < 0:
-        isSelector = False
-      else:
-        if nearestRCurly < nearestLCurly:
-          isSelector = False
-        else:
-          if nearestSColon < 0:
-            isSelector = True
-          else:
-            if nearestLCurly < nearestSColon:
-              isSelector = True
-            else:
-              isSelector = False
-
-    ## if selector
-    if isSelector :
-      view.sel().clear()
-      view.sel().add(nearestLCurly)
-
-    ## If there is a cursor just after {} and the back of the cursor was a newline
-    if ((view.substr(selS - 1) == "}" or view.substr(selS - 1) == "{" ) and
-        view.substr(selS) == "\n"):
-      view.sel().clear()
-      view.sel().add(sublime.Region(selS - 1, selS - 1))
-
-    ## If there is a cursor inside of ()
-    if (view.substr(selS) == "(" or                         # hoge:|(foo);
-        view.substr(selS - 1) == ")" or                     # hoge:(foo)|;
-        findStr(")", dir = "r") < findStr("(", dir = "r")   # hoge:(fo|o);
-        ):
-      view.sel().clear()
-      view.sel().add(findStr(":", dir = "r").begin())
-
-    ## If there is not a rule set after a cursor
-    if nearestLCurly < 0 and nearestRCurly < 0:
-      view.sel().clear()
-      view.sel().add(findStr("}", dir = "r"))
-
-
-    # The acquisition of css block
-    view.run_command('expand_selection', {'to': 'brackets'})
-    view.run_command('expand_selection', {'to': 'brackets'})
+      ## 選択範囲の始点が"{"の場合でも、インターポレーションの場合同様にexpand_selectionが奪われるため、再度実行
+      if view.substr(_tpl - 1) == "#":
+        _old = view.sel()[0]
+        view.run_command('expand_selection', {'to': 'brackets'})
+        _new = view.sel()[0]
+        ## グローバルの変数宣言で#{}を使っている場合、expand_selectionで選択されてしまうため、解除
+        if _old == _new:
+          view.sel().clear()
+          view.sel().add(pos)
     cssBlock = view.sel()[0]
 
-
-    # The acquisition of css rule set
+    # 選択範囲をルールセットに拡張
     ruleSetPosE = cssBlock.end()
+    ## グローバルの変数宣言では、;も選択範囲に含める
+    if view.substr(ruleSetPosE) == ";":
+      ruleSetPosE = ruleSetPosE + 1
 
+    rNearestSColon = findStr(';', point = cssBlock.begin() - 1, dir = "r").end()
     rNearestLCurly = findStr('{', point = cssBlock.begin() - 1, dir = "r").end() 
     rNearestRCurly = findStr('}', point = cssBlock.begin() - 1, dir = "r").end()
-    rNearestSColon = findStr(';', point = cssBlock.begin() - 1, dir = "r").end()
+
+    # 前方にインターポレーションがある場合、それ無視してその前の{}を探す
+    if view.substr(rNearestLCurly - 2) == "#":
+      _tpl = findStr('}', point = rNearestLCurly - 2,).end()
+      if _tpl >= rNearestRCurly:
+        while view.substr(rNearestLCurly - 2) == "#":
+          rNearestRCurly = findStr('}', point = rNearestLCurly - 1, dir = "r").end()
+          rNearestLCurly = findStr('{', point = rNearestLCurly - 1, dir = "r").end()
+
     ruleSetPosS = max(rNearestLCurly, rNearestRCurly, rNearestSColon)
     if ruleSetPosS == -1:
       ruleSetPosS = 0
 
+    # 前方のコメント、行頭改行は無視する
     i = ruleSetPosS
     isCmtCSS = isCmtSCSS = False
     while i < cssBlock.begin():
@@ -191,7 +201,7 @@ class select_css_rule_set(sublime_plugin.TextCommand):
         isCmtCSS = True
       elif view.substr(i) == "/" and view.substr(i + 1) == "/":
         isCmtSCSS = True
-      elif (view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " "):
+      elif view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " ":
         pass
       else:
         break

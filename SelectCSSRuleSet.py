@@ -2,214 +2,248 @@ import sublime
 import sublime_plugin
 
 class select_css_rule_set(sublime_plugin.TextCommand):
+  try:
+    def run(self, edit):
+      view = self.view
 
-  def run(self, edit):
-    view = self.view
+      # CSS/SCSSのコメント内を除外して検索
+      def findStr(key, start = view.sel()[0].begin(), dir = "f"):
 
-    # CSS/SCSSのコメント内を対象外で検索
-    def findStr(key, point = view.sel()[0].begin(), dir = "f"):
-      keyLength = len(key)
-      target = val = lineVal = ""
-      cmtSCSSPos = cmtCSSPosS = cmtCSSPosE =  -1
-      isCmtCSS = isCmtSCSS = False
-      i = j = 0
-      bfLines = view.split_by_newlines(sublime.Region(0, point + 1))
-      currLineNum = len(bfLines) - 1
+        ## 現在位置がコメント内かどうかと、現在行までの情報を取得
+        def checkCurtLine():
+          _bfLines = view.split_by_newlines(sublime.Region(0, start + 1))
+          _curtLineNum = len(_bfLines) - 1
+          def _scss():
+            return view.substr(_bfLines[_curtLineNum]).find("//")
 
-      # pointがSCSSコメント内にあるか
-      if view.substr(bfLines[currLineNum]).find("//") >= 0:
-        cmtSCSSPos = view.substr(bfLines[currLineNum]).find("//")
-        isCmtSCSS = True
+          def _css():
+            i = _curtLineNum
+            _posS = _posE = -1;
+            while i >= 0:
+              _v = view.substr(_bfLines[i])
+              _cmtS = _v.rfind("/*")
+              _cmtE = _v.rfind("*/")
+              if _posS == -1 and _cmtS != -1:
+                _posS = _bfLines[i].begin() + _cmtS
 
-      # pointがCSSコメント内にあるか
-      i = currLineNum
-      while i >= 0:
-        val = view.substr(bfLines[i])
-        if cmtCSSPosS != -1 and cmtCSSPosE != -1:
-          break
-        else:
-          _s = val.rfind("/*")
-          _e = val.rfind("*/")
-          if cmtCSSPosS == -1 and _s != -1:
-            cmtCSSPosS = bfLines[i].begin() + _s
-          if cmtCSSPosE == -1 and _e != -1:
-            cmtCSSPosE = bfLines[i].begin() + _e + 1
-          i -= 1
-      if cmtCSSPosE < cmtCSSPosS:
-        isCmtCSS = True
+              if _posE == -1 and _cmtE != -1:
+                _posE = _bfLines[i].begin() + _cmtE + 1
 
-      if dir == "f":
-        i = 0
-        while view.size() - (point + i) != 0:
-          _v = point + i
-          val = view.substr(_v)
-          if point > 0 and len(val) > 0:
-            if val[0] == "/":
-              if view.substr(_v + 1) == "*":
-                isCmtCSS = True
-              if view.substr(_v - 1) == "*":
-                isCmtCSS = False
-
-            if val[0] == "/":
-              if view.substr(_v + 1) == "/":
-                isCmtSCSS = True
-
-            if val[0] == "\n":
-              if isCmtSCSS == True:
-                isCmtSCSS = False
-
-          if isCmtCSS == False and isCmtSCSS == False:
-            if key == val:
-              target = sublime.Region(_v, _v + 1)
-              break
-          i += 1
-        else:
-          target = sublime.Region(-1, -1)
-
-      else:
-        i = currLineNum
-        while i >= 0:
-          lineValS = bfLines[i].begin()
-          lineVal = view.substr(bfLines[i])
-
-          if i == currLineNum:
-            if isCmtSCSS == False:
-              lineVal = view.substr(sublime.Region(bfLines[i].begin(), point))
-            else:
-              lineVal = view.substr(sublime.Region(lineValS, lineValS + cmtSCSSPos))
-          else:
-            cmtSCSSPos = lineVal.find("//")
-            if cmtSCSSPos != -1:
-              lineVal = view.substr(sublime.Region(lineValS, lineValS + cmtSCSSPos))
-
-
-          j = 1
-          while len(lineVal) >= j:
-            val = lineVal[-j]
-            _v = lineValS + len(lineVal) - j
-
-            if val == "/":
-              if view.substr(_v - 1) == "*":
-                isCmtCSS = True
-              if view.substr(_v + 1) == "*":
-                isCmtCSS = False
-
-            if isCmtCSS == False:
-              if key == val:
-                target = sublime.Region(_v, _v + 1)
+              if _posS != -1 and _posE != -1:
                 break
-            j += 1
+              i -= 1
+            return _posS,_posE
 
-          if target != "":
-            break
+          class _res(object):
+            beforeTextRegions = _bfLines
+            lineNum = _curtLineNum
+            class scss():
+              cmtStartPos = _scss()
+              cmtEndPos = _bfLines[_curtLineNum].end if cmtStartPos != -1 else -1
+              isCmt = True if cmtStartPos != -1 else False
+            class css():
+              cmtStartPos = _css()[0]
+              cmtEndPos = _css()[1]
+              isCmt = True if cmtStartPos > cmtEndPos else False
+          return _res
 
-          isCmtSCSS = False
-          i -= 1
+        def findForward(curt):
+          i = 0
+          _res = ""
+          _css = curt.css.isCmt
+          _scss = curt.scss.isCmt
+          while view.size() - (start + i) != 0:
+            _p = start + i
+            _target = view.substr(_p)
 
-        else:
-          target = sublime.Region(-1, -1)
-      return target
+            if _target == "/":
+              _css = True if view.substr(_p + 1) == "*" else _css
+              _css = False if view.substr(_p - 1) == "*" else _css
+              _scss = True if view.substr(_p + 1) == "/" else _scss
+            elif _target == "\n":
+              _scss = False if _scss == True else False
 
-    try:
-      sel = view.sel()[0]
-      selS = sel.begin()
+            if _css == False and _scss == False and _target == key:
+              _res = sublime.Region(_p, _p + 1)
+              break
+            i += 1
+          else:
+            _res = sublime.Region(-1, -1)
+          return _res
+
+        def findReverse(curt):
+          _bf = curt.beforeTextRegions
+          _n = curt.lineNum
+          _css = curt.css.isCmt
+          _scss = curt.scss.isCmt
+          _scssP = curt.scss.cmtStartPos
+          i = _n
+          _res = ""
+          while i >= 0:
+            _linePosS = _bf[i].begin()
+            _lineStr = view.substr(_bf[i])
+
+            if i == _n:
+              if _scss == False:
+                _lineStr = view.substr(sublime.Region(_linePosS, start))
+              else:
+                _lineStr = view.substr(sublime.Region(_linePosS, _linePosS + _scssP))
+            else:
+              _scssP = _lineStr.find("//")
+              if _scssP != -1:
+                _lineStr = view.substr(sublime.Region(_linePosS, _linePosS + _scssP))
+
+            j = 1
+            while len(_lineStr) >= j:
+              _target = _lineStr[-j]
+              _p = _linePosS + len(_lineStr) - j
+
+              if _target == "/":
+                _css = True if view.substr(_p - 1) == "*" else _css
+                _css = False if view.substr(_p + 1) == "*" else _css
+
+              if _css == False and _target == key:
+                _res = sublime.Region(_p, _p + 1)
+                break
+              j += 1
+
+            if _res != "":
+              break
+
+            _scss = False
+            i -= 1
+
+          else:
+            _res = sublime.Region(-1, -1)
+          return _res
+
+        _curt = checkCurtLine()
+        _res = findReverse(_curt) if dir == "r" else findForward(_curt)
+
+        return _res
+
+
+      # 選択範囲再設定
+      def resetSelection(target):
+        view.sel().clear()
+        view.sel().add(target)
+        return view.sel()[0]
 
       # インターポレーション内にカーソルがある場合、外側に移動
-      _f1 = findStr('{', point = selS, dir = "r")
-      _f2 = findStr('}', point = selS, dir = "r")
-      if view.substr(_f1.begin() - 1) == "#":
-        if _f1.begin() > _f2.begin():
-          view.sel().clear()
-          view.sel().add(_f1.begin() - 1)
-      selS = view.sel()[0].begin()
+      def moveOutFromIntrpl(point):
+        _s = findStr('{', start = point, dir = "r").begin()
+        _e = findStr('}', start = point, dir = "r").begin()
+        if view.substr(_s - 1) == "#" and _s > _e:
+          _res = resetSelection(_s - 1).begin()
+        else:
+          _res = view.sel()[0].begin()
+        return _res
 
-      # セレクタ位置にある場合は{}の内側に、
-      # それ以外は;または}に移動
-      _f3 = findStr(';', point = selS)
+      # セレクタ位置にある場合は{}の内側に、それ以外は;または}に移動
+      def moveIntoDcBlock(point):
+        if view.substr(point - 1) == "}" or view.substr(point - 1) == ";":
+          resetSelection(point - 1).begin()
+        _p = moveOutFromIntrpl(point)
 
-      _f4 = findStr('{', point = selS)
-      while view.substr(_f4.begin() - 1) == "#":
-        _f4 = findStr('{', point = _f4.begin() + 1)
+        _c = findStr(';', start = _p).begin()
+        _s = findStr('{', start = _p).begin()
+        _e = findStr('}', start = _p).begin()
+        
+        if _s < _e:
+          while view.substr(_s - 1) == "#":
+            _s = findStr('{', start = _e + 1 ).begin()
+            _e = findStr('}', start = _e + 1 ).begin()
+            if _s > _e:
+              break
 
-      _f5 = findStr('}', point = selS)
-      _tmp = findStr('{', point = selS)
-      if view.substr(_tmp.begin() - 1) == "#":
-        while _tmp.begin() < _f5.begin():
-          _tmp = findStr('{', point = _f5.begin() )
-          _f5 = findStr('}', point = _f5.begin() + 1 )
+        _lst = [_c,_s,_e]
+        def _f(x): return x > -1
+        _lst = list(filter(_f, _lst))
+        _pos = min(_lst) if _lst != [] else False
+        _res = resetSelection(_pos).begin() if _pos else False
+        return _res
 
-      pos = min(_f3.begin(),_f4.begin(),_f5.begin())
-      if pos != -1:
-        if pos == _f4.begin():
-          pos = pos + 1
-        view.sel().clear()
-        view.sel().add(pos)
 
       # 宣言ブロック選択
-      view.run_command('expand_selection', {'to': 'brackets'})
-      view.run_command('expand_selection', {'to': 'brackets'})
+      def selectDeclarationBlock(point):
 
-      # (....)|; など、括弧の直後にカーソルがある場合、expand_selectionが直前の括弧に奪われるため、
-      # 選択範囲の始点が"{"でない場合はもう一度expand_selectionを実行
-      _tpl = view.sel()[0].begin()
-      if view.substr(_tpl) != "{":
-        view.run_command('expand_selection', {'to': 'brackets'})
-      else:
-        ## 選択範囲の始点が"{"の場合でも、インターポレーションの場合同様にexpand_selectionが奪われるため、再度実行
-        if view.substr(_tpl - 1) == "#":
-          _old = view.sel()[0]
+        ## カーソルが（）や[]の直後にある場合、
+        ## 宣言ブロックが選択されず、直前の括弧が選択されてしまうので調整する
+        def adjustSelection(region):
+          _p = region.begin()
+
+          ### 選択範囲の宣言ブロックではない場合 expand_selectionを再実行
+          ### （始点が"("、"["の場合か、"#{"の場合）
+          if view.substr(_p) != "{" or (view.substr(_p) == "{" and view.substr(_p - 1) == "#"):
+            view.run_command('expand_selection', {'to': 'brackets'})
+            #### 再実行しても選択範囲が変わらない場合
+            #### 直上に{}が存在しない = グローバルの変数宣言のため選択範囲を解除
+            if _p == view.sel()[0].begin():
+              resetSelection(view.sel()[0].end())
+
+          return view.sel()[0]
+
+        _mv = moveIntoDcBlock(point)
+        if _mv:
           view.run_command('expand_selection', {'to': 'brackets'})
-          _new = view.sel()[0]
-          ## グローバルの変数宣言で#{}を使っている場合、expand_selectionで選択されてしまうため、解除
-          if _old == _new:
-            view.sel().clear()
-            view.sel().add(pos)
-      cssBlock = view.sel()[0]
-      
+          view.run_command('expand_selection', {'to': 'brackets'})
+          adjustSelection(view.sel()[0])
+        return view.sel()[0]
 
-      # 選択範囲をルールセットに拡張
-      ruleSetPosE = cssBlock.end()
-      ## グローバルの変数宣言では、;も選択範囲に含める
-      if view.substr(ruleSetPosE) == ";":
-        ruleSetPosE = ruleSetPosE + 1
 
-      rNearestSColon = findStr(';', point = cssBlock.begin() - 1, dir = "r").end()
-      rNearestLCurly = findStr('{', point = cssBlock.begin() - 1, dir = "r").end() 
-      rNearestRCurly = findStr('}', point = cssBlock.begin() - 1, dir = "r").end()
 
-      # 前方にインターポレーションがある場合、それ無視してその前の{}を探す
-      if view.substr(rNearestLCurly - 2) == "#":
-        _tpl = findStr('}', point = rNearestLCurly - 2,).end()
-        if _tpl >= rNearestRCurly:
-          while view.substr(rNearestLCurly - 2) == "#":
-            rNearestRCurly = findStr('}', point = rNearestLCurly - 1, dir = "r").end()
-            rNearestLCurly = findStr('{', point = rNearestLCurly - 1, dir = "r").end()
+      # 選択範囲の始点を宣言ブロックからルールセットに拡張
+      def expandRulesetStartPositon(region):
+        _declaration = region
+        _posE = _declaration.end()
 
-      ruleSetPosS = max(rNearestLCurly, rNearestRCurly, rNearestSColon)
+        ## グローバルの変数宣言では、;も選択範囲に含める
+        _posE += 1 if view.substr(_posE) == ";" else 0
 
-      # 前方のコメント、行頭改行は無視する
-      i = ruleSetPosS
-      isCmtCSS = isCmtSCSS = False
-      while i < cssBlock.begin():
-        if isCmtCSS == True or isCmtSCSS == True:
-          if isCmtCSS == True and view.substr(i) == "*" and view.substr(i + 1) == "/":
-            isCmtCSS = False
-            i = i + 1
-          elif isCmtSCSS == True and view.substr(i) == "\n":
-            isCmtSCSS = False
-        elif view.substr(i) == "/" and view.substr(i + 1) == "*":
-          isCmtCSS = True
-        elif view.substr(i) == "/" and view.substr(i + 1) == "/":
-          isCmtSCSS = True
-        elif view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " ":
-          pass
-        else:
-          break
-        i = i + 1
-      ruleSetPosS = i
+        _c = findStr(';', start = _declaration.begin() , dir = "r").end()
+        _s = findStr('{', start = _declaration.begin() , dir = "r").end()
+        _e = findStr('}', start = _declaration.begin() , dir = "r").end()
 
-      if ruleSetPosE > 0:
-        view.sel().clear()
-        view.sel().add(sublime.Region(ruleSetPosS, ruleSetPosE))
-    except:
-      pass
+        ## 前方にインターポレーションがある場合、それ無視してその前の{}を探す
+        while view.substr(_s - 2) == "#":
+          if findStr('}', start = _s - 2,).end() >= _e:
+            _e = findStr('}', start = _s - 1, dir = "r").end()
+            _s = findStr('{', start = _s - 1, dir = "r").end()
+          else:
+            break
+
+        _posS = max(_s, _e, _c)
+
+        ## 拡張した選択範囲のうち、コメントと行頭改行分をもどす
+        i = _posS
+        _cssCmt = _scssCmt = False
+        while i < _declaration.begin():
+          if view.substr(i) == "/":
+            if view.substr(i + 1) == "*":
+              _cssCmt = True
+            if view.substr(i + 1) == "/":
+              _scssCmt = True
+          elif view.substr(i) == "*":
+            if view.substr(i + 1) == "/":
+              _cssCmt = False
+              i += 2
+          elif view.substr(i) == "\n":
+            _scssCmt = False
+          
+          if _cssCmt == False and _scssCmt == False:
+            if view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " ":
+              pass
+            else:
+              break
+          i += 1
+
+        _posS = i
+
+        if _posE > 0:
+          resetSelection(sublime.Region(_posS, _posE))
+
+      sel = selectDeclarationBlock( view.sel()[0].begin() )
+      expandRulesetStartPositon(sel)
+
+  except:
+    pass

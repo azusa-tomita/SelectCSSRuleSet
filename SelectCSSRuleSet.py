@@ -219,25 +219,23 @@ class select_css_rule_set(sublime_plugin.TextCommand):
         _cssCmt = _scssCmt = False
         while i < _declaration.begin():
           if view.substr(i) == "/":
-            if view.substr(i + 1) == "*":
-              _cssCmt = True
-            if view.substr(i + 1) == "/":
-              _scssCmt = True
+            _cssCmt = True if view.substr(i + 1) == "*" else _cssCmt
+            _scssCmt = True if view.substr(i + 1) == "/" else _scssCmt
           elif view.substr(i) == "*":
             if view.substr(i + 1) == "/":
               _cssCmt = False
               i += 2
           elif view.substr(i) == "\n":
             _scssCmt = False
-          
+
           if _cssCmt == False and _scssCmt == False:
-            if view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " ":
+            if view.substr(i) == "\x00" or view.substr(i) == "\n" or view.substr(i) == "\t" or view.substr(i) == " ":
               pass
             else:
               break
           i += 1
 
-        _posS = i
+        _posS = i if i != -1 else 0
 
         if _posE > 0:
           resetSelection(sublime.Region(_posS, _posE))

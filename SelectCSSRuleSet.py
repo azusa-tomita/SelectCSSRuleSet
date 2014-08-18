@@ -6,10 +6,8 @@ class select_css_rule_set(sublime_plugin.TextCommand):
     def run(self, edit):
       view = self.view
 
-      # CSS/SCSSのコメント内を除外して検索
       def findStr(key, start = view.sel()[0].begin(), dir = "f"):
 
-        ## 現在位置がコメント内かどうかと、現在行までの情報を取得
         def checkCurtLine():
           _bfLines = view.split_by_newlines(sublime.Region(0, start + 1))
           _curtLineNum = len(_bfLines) - 1
@@ -122,14 +120,11 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 
         return _res
 
-
-      # 選択範囲再設定
       def resetSelection(target):
         view.sel().clear()
         view.sel().add(target)
         return view.sel()[0]
 
-      # インターポレーション内にカーソルがある場合、外側に移動
       def moveOutFromIntrpl(point):
         _s = findStr('{', start = point, dir = "r").begin()
         _e = findStr('}', start = point, dir = "r").begin()
@@ -139,7 +134,6 @@ class select_css_rule_set(sublime_plugin.TextCommand):
           _res = view.sel()[0].begin()
         return _res
 
-      # セレクタ位置にある場合は{}の内側に、それ以外は;または}に移動
       def moveIntoDcBlock(point):
         if view.substr(point - 1) == "}" or view.substr(point - 1) == ";":
           resetSelection(point - 1).begin()
@@ -164,20 +158,13 @@ class select_css_rule_set(sublime_plugin.TextCommand):
         return _res
 
 
-      # 宣言ブロック選択
       def selectDeclarationBlock(point):
 
-        ## カーソルが（）や[]の直後にある場合、
-        ## 宣言ブロックが選択されず、直前の括弧が選択されてしまうので調整する
         def adjustSelection(region):
           _p = region.begin()
 
-          ### 選択範囲の宣言ブロックではない場合 expand_selectionを再実行
-          ### （始点が"("、"["の場合か、"#{"の場合）
           if view.substr(_p) != "{" or (view.substr(_p) == "{" and view.substr(_p - 1) == "#"):
             view.run_command('expand_selection', {'to': 'brackets'})
-            #### 再実行しても選択範囲が変わらない場合
-            #### 直上に{}が存在しない = グローバルの変数宣言のため選択範囲を解除
             if _p == view.sel()[0].begin():
               resetSelection(view.sel()[0].end())
 
@@ -190,21 +177,15 @@ class select_css_rule_set(sublime_plugin.TextCommand):
           adjustSelection(view.sel()[0])
         return view.sel()[0]
 
-
-
-      # 選択範囲の始点を宣言ブロックからルールセットに拡張
       def expandRulesetStartPositon(region):
         _declaration = region
         _posE = _declaration.end()
-
-        ## グローバルの変数宣言では、;も選択範囲に含める
         _posE += 1 if view.substr(_posE) == ";" else 0
 
         _c = findStr(';', start = _declaration.begin() , dir = "r").end()
         _s = findStr('{', start = _declaration.begin() , dir = "r").end()
         _e = findStr('}', start = _declaration.begin() , dir = "r").end()
 
-        ## 前方にインターポレーションがある場合、それ無視してその前の{}を探す
         while view.substr(_s - 2) == "#":
           if findStr('}', start = _s - 2,).end() >= _e:
             _e = findStr('}', start = _s - 1, dir = "r").end()
@@ -214,7 +195,6 @@ class select_css_rule_set(sublime_plugin.TextCommand):
 
         _posS = max(_s, _e, _c)
 
-        ## 拡張した選択範囲のうち、コメントと行頭改行分をもどす
         i = _posS
         _cssCmt = _scssCmt = False
         while i < _declaration.begin():
